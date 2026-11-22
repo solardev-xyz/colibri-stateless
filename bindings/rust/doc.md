@@ -413,7 +413,7 @@ the mechanism you use to decode CCIP-Read / `OffchainLookup` errors.
 
 The crate is intentionally lean:
 
-- `default = ["op", "http", "prebuilt"]`.
+- `default = ["op", "http", "prebuilt", "prover"]`.
 - `op` -- enable the OP-Stack verifier and prover in the underlying C
   core (`CHAIN_OP=ON`). On by default so verifying Base, OP Mainnet
   and other OP-Stack rollups works out of the box. Disable with
@@ -432,6 +432,11 @@ The crate is intentionally lean:
   the crate version when neither C sources nor `COLIBRI_LIB_DIR` are
   available (crates.io install). On by default; without it the build
   never downloads anything itself.
+- `prover` -- the prover (`Prover`, `Colibri::create_proof`). On by
+  default. Without it the C core is built with `PROVER=OFF`: it only
+  verifies, contexts run in remote or proxy mode, and a failed remote
+  proof ends the request with an error instead of a local proof. Only
+  affects the CMake path, like `op`.
 - All the heavy lifting -- rustls, tokio, reqwest -- is pulled in
   through minimal feature selections so cross-compilation and audits
   stay predictable.
