@@ -24,5 +24,5 @@ pub use pending::{PendingRequest, Step};
 #[cfg(feature = "prover")]
 pub use prover::Prover;
 pub use request::{set_error as req_set_error, set_response as req_set_response};
-pub use rpc::{reset_caches, set_checkpoint, RpcCtx};
+pub use rpc::{reset_caches, set_checkpoint, set_fixed_time, RpcCtx};
 pub use verifier::Verifier;
