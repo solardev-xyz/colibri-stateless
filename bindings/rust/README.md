@@ -137,7 +137,8 @@ static archive. Where that archive comes from depends on your build:
 - `http` (default) -- the high-level async `Colibri` client, which
   fetches pending data with `reqwest` on `tokio`, and the
   `ColibriError::HttpClient` variant. Hosts that do their own I/O can
-  turn it off and drive `RpcCtx` / `Verifier` / `Prover` themselves;
+  turn it off and drive `RpcCtx` / `Verifier` themselves (and `Prover`,
+  with the `prover` feature);
   tokio, reqwest, futures and async-trait then drop out of the
   dependency tree:
 

@@ -39,8 +39,8 @@ op = []
 # The high-level async `Colibri` client, which fetches pending data with
 # reqwest on tokio. On by default. Hosts that do their own I/O can build
 # with `default-features = false`: the context types (`RpcCtx`, `Verifier`,
-# `Prover`), storage and helpers stay, and tokio, reqwest, futures and
-# async-trait drop out of the dependency tree.
+# and `Prover` with the `prover` feature), storage and helpers stay, and
+# tokio, reqwest, futures and async-trait drop out of the dependency tree.
 http = ["dep:tokio", "dep:reqwest", "dep:futures", "dep:async-trait"]
 # Let `build.rs` download the prebuilt native archive of this version from
 # GitHub Releases when there are neither C sources (crates.io install) nor
