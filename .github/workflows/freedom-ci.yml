@@ -1,0 +1,17 @@
+name: Freedom fork CI (3.0.3 backport)
+
+# CI-only: runs the C core and Rust binding workflows on the ci/* branches of
+# the solardev-xyz fork. Not part of the pinned commit.
+on:
+  push:
+    branches: ["ci/**"]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  cmake:
+    uses: ./.github/workflows/cmake.yml
+  rust:
+    uses: ./.github/workflows/bindings-rust.yml
