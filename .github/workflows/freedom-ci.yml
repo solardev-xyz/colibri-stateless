@@ -7,8 +7,11 @@ on:
     branches: ["ci/**"]
 
 permissions:
-  contents: write # the called rust workflow declares it; its publish jobs are tag-only
+  # what the called workflows declare; their publish jobs are tag-only
+  contents: write
   checks: write
+  pull-requests: write
+  actions: read
 
 jobs:
   cmake:
