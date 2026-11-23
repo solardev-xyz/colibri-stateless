@@ -208,6 +208,7 @@ fn cmake_build_root(
     target: &str,
     op_enabled: bool,
     prover_enabled: bool,
+    static_crt: bool,
 ) -> PathBuf {
     let mut dir = match env::var_os("COLIBRI_CMAKE_BUILD_DIR") {
         Some(dir) => PathBuf::from(dir),
@@ -222,7 +223,26 @@ fn cmake_build_root(
     if !prover_enabled {
         dir = dir.join("no-prover");
     }
+    // Objects built for one C runtime can't link into the other (MSVC),
+    // and on Windows the build root is shared by every build of this
+    // checkout.
+    if static_crt {
+        dir = dir.join("static-crt");
+    }
     dir
+}
+
+/// Whether an MSVC target links the C runtime statically (rustc's
+/// `-C target-feature=+crt-static`, as release builds that need no VC++
+/// redistributable do). CMake must then build the C core with the same
+/// runtime: with policy CMP0091 it takes the runtime from
+/// `CMAKE_MSVC_RUNTIME_LIBRARY`, whose default is the DLL one, so the
+/// `/MT` the `cmake` crate adds to the flags doesn't win, and the link
+/// fails on the DLL runtime's `__imp_` symbols.
+fn msvc_static_crt(target: &str) -> bool {
+    target.contains("msvc")
+        && env::var("CARGO_CFG_TARGET_FEATURE")
+            .is_ok_and(|features| features.split(',').any(|f| f == "crt-static"))
 }
 
 /// Invoke CMake in the repo checkout to produce the archives, then
@@ -243,7 +263,9 @@ fn build_with_cmake(repo_root: &Path, target: &str) -> LinkSetup {
     // no prover code is compiled, and the RPC context never proves
     // locally.
     let prover_enabled = env::var_os("CARGO_FEATURE_PROVER").is_some();
-    let out_dir = cmake_build_root(repo_root, target, op_enabled, prover_enabled);
+    let static_crt = msvc_static_crt(target);
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_FEATURE");
+    let out_dir = cmake_build_root(repo_root, target, op_enabled, prover_enabled, static_crt);
     let mut cfg = cmake::Config::new(repo_root);
     cfg.out_dir(&out_dir)
         .define("CURL", "OFF")
@@ -259,6 +281,10 @@ fn build_with_cmake(repo_root: &Path, target: &str) -> LinkSetup {
         // `build` builds ALL_BUILD implicitly, which contains every
         // registered chain module plus the deps.
         .build_target("verifier");
+    if static_crt {
+        cfg.static_crt(true)
+            .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
+    }
     forward_fetchcontent_settings(&mut cfg);
     let dst = cfg.build();
     let build_dir = dst.join("build");
@@ -490,7 +516,8 @@ fn link_system_libs(target: &str) {
         // `/DEFAULTLIB` directives that `cl` embeds into the object
         // files, so there is nothing to declare here. Both CMake (via
         // the `cmake` crate) and rustc default to the dynamic `/MD`
-        // runtime, so the two halves agree.
+        // runtime, so the two halves agree; with `+crt-static` both use
+        // the static one (`msvc_static_crt`).
     } else if target.contains("android") {
         println!("cargo:rustc-link-lib=c++_shared");
     } else if target.contains("linux") || target.contains("unknown-linux") {
