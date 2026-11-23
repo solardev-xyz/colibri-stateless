@@ -103,6 +103,11 @@ foreach(test_source ${TEST_SOURCES})
         target_link_libraries(${test_name} PRIVATE eth_bn254 intx_wrapper util)
     endif()
 
+    # The generic C FFI (colibri.h's c4_verify_create_ctx and the rest).
+    if("${test_name}" STREQUAL "test_verify_create_ctx")
+        target_link_libraries(${test_name} PRIVATE api_ffi)
+    endif()
+
     if("${test_name}" MATCHES "^test_op_")
         if(CHAIN_OP)
             if("${test_name}" STREQUAL "test_op_sequencer_proof")

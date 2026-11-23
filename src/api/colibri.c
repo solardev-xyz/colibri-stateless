@@ -84,6 +84,7 @@ void* c4_verify_create_ctx(bytes_t proof, char* method, char* args, uint64_t cha
   char* args_copy   = args ? strdup(args) : NULL;
   json_t args_json  = args_copy ? json_parse(args_copy) : (json_t){0};
   if (c4_verify_init(&ctx->ctx, ctx->proof, method_copy, args_json, (chain_id_t) chain_id, (verify_flags_t) flags) != C4_SUCCESS) {
+    c4_state_free(&ctx->ctx.state); // the error c4_verify_init set
     if (ctx->proof.data) free(ctx->proof.data);
     free(method_copy);
     free(args_copy);
