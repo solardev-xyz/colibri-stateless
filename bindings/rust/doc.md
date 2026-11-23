@@ -205,24 +205,35 @@ If you need to drive the state machine yourself -- for instance in an
 embedded host that already owns the HTTP stack -- use the raw wrappers:
 
 ```rust
-use colibri_stateless::{Prover, Verifier};
+use colibri_stateless::{Prover, Step, Verifier};
 
-let mut prover = Prover::new(1, "eth_getBalance", &params, /* flags */ 0)?;
+let params = r#"["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "latest"]"#;
+let mut prover = Prover::new("eth_getBalance", params, 1, /* flags */ 0)?;
 loop {
-    match prover.execute_json_status()?.status() {
-        colibri_stateless::Status::Pending { requests } => {
-            // fetch, then prover.set_response(req_ptr, bytes) / set_error(...)
+    match prover.execute()? {
+        Step::Pending { requests } => {
+            for request in requests {
+                // Fetch what `request` describes (type, url, payload, ...),
+                // then answer it -- no `unsafe` needed, the request borrows
+                // the prover until it is answered:
+                // request.set_response(&body, node_index) or
+                // request.set_error(&message, node_index)
+            }
         }
-        colibri_stateless::Status::Success { .. } => break,
-        colibri_stateless::Status::Error { message } => panic!("{message}"),
-        _ => {}
+        Step::Success { .. } => break,
+        Step::Revert { data } => panic!("reverted: {data}"),
+        Step::Error { message } => panic!("{message}"),
     }
 }
-let proof: Vec<u8> = prover.get_proof().into();
+let proof: Vec<u8> = prover.get_proof()?;
 
-let mut verifier = Verifier::new(1, "eth_getBalance", &params, &proof, 0)?;
-// same loop, then read verifier.execute_json_status()?.result_value().
+let mut verifier = Verifier::new(&proof, "eth_getBalance", params, 1, None, 0)?;
+// Same loop; `Step::Success { result }` carries the verified result.
 ```
+
+`execute_json_status()` and the `unsafe` `req_set_response` /
+`req_set_error` functions remain for hosts that parse the JSON status
+themselves.
 
 ### Storage
 
@@ -413,7 +424,7 @@ the mechanism you use to decode CCIP-Read / `OffchainLookup` errors.
 
 The crate is intentionally lean:
 
-- `default = ["op"]`.
+- `default = ["op", "http", "prebuilt", "prover"]`.
 - `op` -- enable the OP-Stack verifier and prover in the underlying C
   core (`CHAIN_OP=ON`). On by default so verifying Base, OP Mainnet
   and other OP-Stack rollups works out of the box. Disable with
@@ -423,6 +434,20 @@ The crate is intentionally lean:
   downloaded from GitHub always contain OP support. When disabled,
   the dispatcher returns `Unsupported chain` for OP-Stack chain
   IDs; Ethereum-family IDs are unaffected.
+- `http` -- the high-level async `Colibri` client (reqwest on tokio)
+  and the `ColibriError::HttpClient` variant. On by default. Without
+  it the crate keeps `RpcCtx`, `Verifier`, `Prover`, storage and the
+  helpers, and tokio, reqwest, futures and async-trait drop out of
+  the dependency tree, for hosts that do their own I/O.
+- `prebuilt` -- let `build.rs` download the release archive matching
+  the crate version when neither C sources nor `COLIBRI_LIB_DIR` are
+  available (crates.io install). On by default; without it the build
+  never downloads anything itself.
+- `prover` -- the prover (`Prover`, `Colibri::create_proof`). On by
+  default. Without it the C core is built with `PROVER=OFF`: it only
+  verifies, contexts run in remote or proxy mode, and a failed remote
+  proof ends the request with an error instead of a local proof. Only
+  affects the CMake path, like `op`.
 - All the heavy lifting -- rustls, tokio, reqwest -- is pulled in
   through minimal feature selections so cross-compilation and audits
   stay predictable.

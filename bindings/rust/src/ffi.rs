@@ -15,6 +15,7 @@
 use std::os::raw::{c_char, c_int, c_void};
 
 /// Opaque handle for the prover context.
+#[cfg(feature = "prover")]
 pub type prover_t = c_void;
 
 /// Fat pointer wrapping a byte span. Mirrors `bytes_t` from
@@ -65,9 +66,10 @@ pub struct storage_plugin_t {
 
 extern "C" {
     // ------------------------------------------------------------------
-    // Prover API (src/api/colibri.h)
+    // Prover API (src/api/colibri.h); not in a `PROVER=OFF` build
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "prover")]
     pub fn c4_create_prover_ctx(
         method: *mut c_char,
         params: *mut c_char,
@@ -75,10 +77,13 @@ extern "C" {
         flags: u32,
     ) -> *mut prover_t;
 
+    #[cfg(feature = "prover")]
     pub fn c4_prover_execute_json_status(ctx: *mut prover_t) -> *mut c_char;
 
+    #[cfg(feature = "prover")]
     pub fn c4_prover_get_proof(ctx: *mut prover_t) -> bytes_t;
 
+    #[cfg(feature = "prover")]
     pub fn c4_free_prover_ctx(ctx: *mut prover_t);
 
     // ------------------------------------------------------------------
@@ -114,6 +119,7 @@ extern "C" {
 
     /// L1 chain id that settles `chain_id`: Ethereum mainnet for an EEZ L2 such as RollupX,
     /// `chain_id` itself for every other chain.
+    #[cfg_attr(not(feature = "http"), allow(dead_code))] // used by the `http` client only
     pub fn c4_get_l1_chain_id_for_l2(chain_id: u64) -> u64;
 
     /// Query whether an RPC method is proofable / unproofable / local /

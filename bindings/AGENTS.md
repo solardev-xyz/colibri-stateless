@@ -109,6 +109,9 @@ CI builds prebuilds per platform and bundles them into the npm package (`prebuil
   (`c4_create_rpc_ctx` / `c4_rpc_execute_json_status`).
 - `src/core/{prover,verifier,rpc}.rs` -- RAII wrappers around the C
   prover / verifier / rpc contexts, `Drop`-safe.
+- `src/core/pending.rs` -- `Step` / `PendingRequest`: `execute()` on
+  the contexts returns pending requests that borrow their context, so
+  they are answered without `unsafe`.
 - `src/ffi.rs` -- Manually maintained `extern "C"` declarations
   mirroring `src/api/colibri.h` + `src/util/plugin.h`.
 - `src/storage/` -- `Storage` trait plus `MemoryStorage` /
@@ -117,13 +120,15 @@ CI builds prebuilds per platform and bundles them into the npm package (`prebuil
 - `src/testing.rs` -- `discover_tests`, `FileBackedMockStorage`,
   `FileBackedMockRequestHandler` -- replays the shared
   `test/data/*` fixtures used by every binding.
-- `build.rs` -- Hybrid: `cmake` build inside the monorepo, downloads
-  prebuilt archives on `crates.io`, honours `COLIBRI_LIB_DIR` and
-  `DOCS_RS`.
+- `build.rs` -- Hybrid: `cmake` build inside the monorepo (tree under
+  `OUT_DIR`, `C4_VERSION` = crate version), downloads prebuilt archives
+  on `crates.io` (`prebuilt` feature), honours `COLIBRI_LIB_DIR`,
+  `COLIBRI_CMAKE_BUILD_DIR`, `FETCHCONTENT_*` and `DOCS_RS`.
 
 **Build**: `cargo build` inside the monorepo drives CMake to produce
 `libapi.a` + `libapi_ffi.a` and the individual chain archives, then
-links them into the crate. Downstream users on crates.io get prebuilt
+links them into the crate. `--no-default-features` builds the C core
+verifier-only (`PROVER=OFF`, no `op`). Downstream users on crates.io get prebuilt
 native archives from the matching GitHub Release.
 
 ## Docker
