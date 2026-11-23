@@ -7,7 +7,7 @@ on:
     branches: ["ci/**"]
 
 permissions:
-  contents: read
+  contents: write # the called rust workflow declares it; its publish jobs are tag-only
   checks: write
 
 jobs:
