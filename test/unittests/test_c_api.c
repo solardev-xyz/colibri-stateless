@@ -21,10 +21,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-// A verifier context that can't be created leaves nothing behind: the
-// error `c4_verify_init` set is freed with the rest. The Valgrind job
-// fails on the leak this used to be.
+// The generic C FFI (colibri.h), which the Rust, Kotlin, Swift, Python and
+// Dart bindings use:
+// - a verifier context that can't be created leaves nothing behind: the
+//   error `c4_verify_init` set is freed with the rest (the Valgrind job
+//   fails on the leak this used to be);
+// - a response given through `c4_req_set_response` is zero-terminated past
+//   its length, as the Node and WASM bindings' copies are, so the verifier's
+//   JSON parsing stops at its end.
+#include "bytes.h"
 #include "colibri.h"
+#include "state.h"
+#include "sync_committee.h"
 #include "unity.h"
 #include <stddef.h>
 
@@ -49,9 +57,43 @@ void test_create_ctx_with_an_invalid_proof_frees_its_error(void) {
   TEST_ASSERT_NULL(ctx);
 }
 
+// The copy keeps the length and ends with a zero past it.
+void test_a_response_is_zero_terminated(void) {
+  data_request_t req = {0};
+  c4_req_set_response(&req, (bytes_t) {.data = (uint8_t*) "{\"a\":", .len = 5}, 2);
+  TEST_ASSERT_EQUAL_UINT32(5, req.response.len);
+  TEST_ASSERT_EQUAL_UINT8(0, req.response.data[5]);
+  TEST_ASSERT_EQUAL_UINT16(2, req.response_node_index);
+  safe_free(req.response.data);
+  c4_req_set_response(&req, (bytes_t) {.data = NULL, .len = 0}, 0);
+  TEST_ASSERT_EQUAL_UINT32(0, req.response.len);
+  TEST_ASSERT_EQUAL_UINT8(0, req.response.data[0]);
+  safe_free(req.response.data);
+}
+
+// An unbalanced JSON answer to the verifier's checkpointz request: the
+// parser stops at the answer's end, and the request fails.
+void test_an_unbalanced_answer_is_read_within_its_length(void) {
+#ifdef USE_CHECKPOINTZ
+  c4_state_t state = {0};
+  uint64_t   epoch = 0;
+  bytes32_t  root  = {0};
+  TEST_ASSERT_FALSE(c4_req_checkpointz_status(&state, C4_CHAIN_MAINNET, &epoch, root));
+  TEST_ASSERT_NOT_NULL(state.requests);
+  c4_req_set_response(state.requests, (bytes_t) {.data = (uint8_t*) "{\"data\":{", .len = 9}, 0);
+  TEST_ASSERT_FALSE(c4_req_checkpointz_status(&state, C4_CHAIN_MAINNET, &epoch, root));
+  TEST_ASSERT_NOT_NULL(state.error);
+  c4_state_free(&state);
+#else
+  TEST_IGNORE_MESSAGE("USE_CHECKPOINTZ is off");
+#endif
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_create_ctx_without_a_proof_frees_its_error);
   RUN_TEST(test_create_ctx_with_an_invalid_proof_frees_its_error);
+  RUN_TEST(test_a_response_is_zero_terminated);
+  RUN_TEST(test_an_unbalanced_answer_is_read_within_its_length);
   return UNITY_END();
 }
