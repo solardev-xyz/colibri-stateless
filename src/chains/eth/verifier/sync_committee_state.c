@@ -248,6 +248,7 @@ bool c4_req_checkpointz_status(c4_state_t* state, chain_id_t chain_id, uint64_t*
         const char* err = json_validate(res, "{data:{finalized:{epoch:suint,root:string}}}", "finality checkpoints");
         if (err) {
           c4_state_add_error(state, err);
+          safe_free((void*) err);
           return false;
         }
         req->validated = true;
