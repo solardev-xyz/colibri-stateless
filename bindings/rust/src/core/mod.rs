@@ -19,7 +19,7 @@ mod verifier;
 
 #[cfg(feature = "http")]
 pub use client::{Colibri, ColibriBuilder, ColibriConfig, RequestHandler};
-pub use helpers::{get_current_version_number, get_method_support, get_method_type};
+pub use helpers::{decode_proof, get_current_version_number, get_method_support, get_method_type};
 pub use pending::{PendingRequest, Step};
 #[cfg(feature = "prover")]
 pub use prover::Prover;
