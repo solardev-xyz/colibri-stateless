@@ -30,7 +30,9 @@
 //! - [`Prover`] / [`Verifier`] / [`RpcCtx`] wrap the corresponding C
 //!   contexts and let you drive the state machine yourself: `execute()`
 //!   returns a [`Step`] whose [`PendingRequest`]s are answered without
-//!   `unsafe`.
+//!   `unsafe`. [`Prover`] needs the `prover` feature (on by default);
+//!   without it the C core is built verifier-only and proofs come from
+//!   a remote prover.
 //! - [`get_method_support`] classifies an RPC method (proofable, local,
 //!   ...).
 //! - [`Storage`] plus [`FileStorage`] / [`MemoryStorage`] persist the
@@ -50,9 +52,11 @@ pub mod storage;
 pub mod testing;
 pub mod types;
 
+#[cfg(feature = "prover")]
+pub use core::Prover;
 pub use core::{
     get_current_version_number, get_method_support, get_method_type, req_set_error,
-    req_set_response, reset_caches, set_checkpoint, PendingRequest, Prover, RpcCtx, Step, Verifier,
+    req_set_response, reset_caches, set_checkpoint, PendingRequest, RpcCtx, Step, Verifier,
 };
 #[cfg(feature = "http")]
 pub use core::{Colibri, ColibriBuilder, ColibriConfig, RequestHandler};

@@ -147,6 +147,19 @@ static archive. Where that archive comes from depends on your build:
   archive matching the crate version when neither C sources nor
   `COLIBRI_LIB_DIR` are available (crates.io install). Turn it off for
   builds that must not download anything.
+- `prover` (default) -- the prover: `Prover`, `Colibri::create_proof`
+  and, in the CMake build, the prover libraries. Without it the C core
+  is built with `PROVER=OFF`: no prover code is compiled, contexts run
+  in remote or proxy mode only (local and hybrid mode end with an
+  error), and a failed remote proof ends the request with an error
+  instead of a local proof:
+
+  ```toml
+  colibri-stateless = { version = "0.1", default-features = false }
+  ```
+
+  Like `op`, it only affects the CMake path; prebuilt and
+  `COLIBRI_LIB_DIR` archives are linked as they are.
 
 ## Testing against shared fixtures
 

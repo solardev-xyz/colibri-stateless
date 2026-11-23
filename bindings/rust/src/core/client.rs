@@ -19,6 +19,7 @@ use serde_json::Value as JsonValue;
 
 use super::helpers::get_current_version_number;
 use super::pending::{PendingRequest, Step};
+#[cfg(feature = "prover")]
 use super::prover::Prover;
 use super::rpc::{set_checkpoint, RpcCtx};
 use super::verifier::Verifier;
@@ -408,6 +409,8 @@ impl Colibri {
 
     /// Generate a proof for `method(params)` and return the raw proof
     /// bytes. Skips verification -- use [`verify_proof`] afterwards.
+    /// Needs the `prover` feature.
+    #[cfg(feature = "prover")]
     pub async fn create_proof(
         &self,
         method: &str,
@@ -684,6 +687,7 @@ mod tests {
         };
         let params = JsonValue::Array(Vec::new());
         assert_send(&client.rpc("eth_blockNumber", &params));
+        #[cfg(feature = "prover")]
         assert_send(&client.create_proof("eth_blockNumber", &params));
         assert_send(&client.verify_proof(&[], "eth_blockNumber", &params));
     }
