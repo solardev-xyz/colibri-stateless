@@ -186,6 +186,15 @@ jobs:
         # which uses the high-level client; op and the prover are off.
         run: cargo test --release --target ${{ matrix.target }} --no-default-features --features http -- --test-threads=1
 
+      - name: cargo test (no default features)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bindings/rust
+        shell: bash
+        # Everything that builds without `http`, `op` and the prover,
+        # doctests included. The fixture runner needs the `http` client
+        # and runs in the step above.
+        run: cargo test --release --target ${{ matrix.target }} --no-default-features -- --test-threads=1
+
       - name: cargo test (release)
         working-directory: bindings/rust
         shell: bash
