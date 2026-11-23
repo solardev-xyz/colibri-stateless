@@ -425,8 +425,8 @@ The crate is intentionally lean:
   IDs; Ethereum-family IDs are unaffected.
 - `http` -- the high-level async `Colibri` client (reqwest on tokio)
   and the `ColibriError::HttpClient` variant. On by default. Without
-  it the crate keeps `RpcCtx`, `Verifier`, `Prover`, storage and the
-  helpers, and tokio, reqwest, futures and async-trait drop out of
+  it the crate keeps `RpcCtx`, `Verifier` (and `Prover` with the
+  `prover` feature), storage and the helpers, and tokio, reqwest, futures and async-trait drop out of
   the dependency tree, for hosts that do their own I/O.
 - `prebuilt` -- let `build.rs` download the release archive matching
   the crate version when neither C sources nor `COLIBRI_LIB_DIR` are
