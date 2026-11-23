@@ -21,12 +21,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-// A verifier context that can't be created leaves nothing behind: the
-// error `c4_verify_init` set is freed with the rest. The Valgrind job
-// fails on the leak this used to be.
-#include "colibri.h"
+// The checkpointz answer the verifier asks for when it has no chain state
+// (`c4_req_checkpointz_status`): an answer that fails its validation frees
+// the validation's error. (An unbalanced answer is test_c_api.c's.)
+#include "bytes.h"
+#include "state.h"
+#include "sync_committee.h"
 #include "unity.h"
-#include <stddef.h>
 
 void setUp(void) {
 }
@@ -34,24 +35,26 @@ void setUp(void) {
 void tearDown(void) {
 }
 
-// No proof for a provable method: "missing proof!" (`THROW_ERROR`).
-void test_create_ctx_without_a_proof_frees_its_error(void) {
-  bytes_t none = {.data = NULL, .len = 0};
-  void*   ctx  = c4_verify_create_ctx(none, "eth_getBlockByNumber", "[\"latest\",false]", 1, NULL, 0);
-  TEST_ASSERT_NULL(ctx);
-}
-
-// A proof that isn't a request: the SSZ validation error (`THROW_INVALID`).
-void test_create_ctx_with_an_invalid_proof_frees_its_error(void) {
-  uint8_t byte  = 0;
-  bytes_t proof = {.data = &byte, .len = 1};
-  void*   ctx   = c4_verify_create_ctx(proof, "eth_getBlockByNumber", "[\"latest\",false]", 1, NULL, 0);
-  TEST_ASSERT_NULL(ctx);
+// Valid JSON, the wrong shape: the validation's error is freed.
+void test_an_invalid_answer_frees_its_validation_error(void) {
+#ifdef USE_CHECKPOINTZ
+  c4_state_t state = {0};
+  uint64_t   epoch = 0;
+  bytes32_t  root  = {0};
+  TEST_ASSERT_FALSE(c4_req_checkpointz_status(&state, C4_CHAIN_MAINNET, &epoch, root));
+  TEST_ASSERT_NOT_NULL(state.requests);
+  TEST_ASSERT_NULL(state.error);
+  state.requests->response = bytes_dup(bytes((uint8_t*) "{}", 3));
+  TEST_ASSERT_FALSE(c4_req_checkpointz_status(&state, C4_CHAIN_MAINNET, &epoch, root));
+  TEST_ASSERT_NOT_NULL(state.error);
+  c4_state_free(&state);
+#else
+  TEST_IGNORE_MESSAGE("USE_CHECKPOINTZ is off");
+#endif
 }
 
 int main(void) {
   UNITY_BEGIN();
-  RUN_TEST(test_create_ctx_without_a_proof_frees_its_error);
-  RUN_TEST(test_create_ctx_with_an_invalid_proof_frees_its_error);
+  RUN_TEST(test_an_invalid_answer_frees_its_validation_error);
   return UNITY_END();
 }

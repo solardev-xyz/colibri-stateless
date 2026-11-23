@@ -58,8 +58,13 @@ void c4_free_prover_ctx(prover_t* ctx) {
 #endif
 
 void c4_req_set_response(void* req_ptr, bytes_t data, uint16_t node_index) {
-  data_request_t* ctx      = (data_request_t*) req_ptr;
-  ctx->response            = bytes_dup(bytes(data.data, data.len));
+  data_request_t* ctx = (data_request_t*) req_ptr;
+  // Allocate len+1 and zero-terminate: the verifier reads JSON responses as C
+  // strings (json_parse), as the Node and WASM bindings' copies allow.
+  uint8_t* copy = safe_malloc(data.len + 1);
+  if (data.len) memcpy(copy, data.data, data.len);
+  copy[data.len]           = 0;
+  ctx->response            = bytes(copy, data.len);
   ctx->response_node_index = node_index;
 }
 
