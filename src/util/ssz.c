@@ -130,7 +130,41 @@ static bool add_error_prefix(c4_state_t* state, const char* prefix) {
   return false;
 }
 
-bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
+/**
+ * Size of the fixed part of a container: every fixed-size field inline plus one
+ * offset per dynamic field.
+ *
+ * This differs from `ssz_fixed_length` for dynamic containers, which returns only
+ * `SSZ_OFFSET_SIZE` there (the footprint of the container inside its parent).
+ *
+ * @param def definition of a container or progressive container
+ * @return the number of bytes any valid serialization of the container must at least have
+ */
+static size_t container_fixed_part(const ssz_def_t* def) {
+  const ssz_def_t* elements = ssz_container_elements(def);
+  uint32_t         count    = ssz_container_len(def);
+  size_t           len      = 0;
+  for (uint32_t i = 0; i < count; i++) {
+    if (ssz_field_active(def, i)) len += ssz_fixed_length(elements + i);
+  }
+  return len;
+}
+
+/**
+ * Recursive worker of `ssz_is_valid` which tracks the nesting level.
+ *
+ * @param ob the object to validate
+ * @param recursive if true, nested objects are validated as well
+ * @param state optional state receiving the error message
+ * @param depth nesting level of `ob` below the object passed to `ssz_is_valid`
+ * @return true if the object is valid
+ */
+static bool is_valid_at_depth(ssz_ob_t ob, bool recursive, c4_state_t* state, uint32_t depth) {
+  // Type definitions may refer to themselves (a proof containing a proof), so the nesting
+  // is only bounded by the size of the object. The limit bounds the depth of the recursion.
+  if (depth > SSZ_MAX_NESTING)
+    THROW_INVALID("SSZ object is nested too deeply");
+
   // Global size limit to prevent integer overflows in multiplications
   if (ob.bytes.len > SSZ_MAX_BYTES)
     THROW_INVALID("SSZ object exceeds maximum size");
@@ -148,7 +182,7 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
       if (recursive && ob.def->def.vector.type->type != SSZ_TYPE_UINT) {
         for (int i = 0; i < ob.def->def.vector.len; i++) {
           ssz_ob_t el = ssz_at(ob, i);
-          if (!ssz_is_valid(el, recursive, state)) return false;
+          if (!is_valid_at_depth(el, recursive, state, depth + 1)) return false;
         }
       }
       return true;
@@ -168,10 +202,10 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
         for (int i = SSZ_OFFSET_SIZE; i < first_offset; i += SSZ_OFFSET_SIZE) {
           uint32_t next_offset = uint32_from_le(ob.bytes.data + i);
           if (next_offset > ob.bytes.len || next_offset < offset) THROW_INVALID("Invalid offset(%d for i=%d) for list. Must be between %d and %d", next_offset, i, offset, ob.bytes.len);
-          if (recursive && !ssz_is_valid(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + offset, next_offset - offset)), recursive, state)) return false;
+          if (recursive && !is_valid_at_depth(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + offset, next_offset - offset)), recursive, state, depth + 1)) return false;
           offset = next_offset;
         }
-        if (recursive && !ssz_is_valid(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + offset, ob.bytes.len - offset)), recursive, state)) return false;
+        if (recursive && !is_valid_at_depth(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + offset, ob.bytes.len - offset)), recursive, state, depth + 1)) return false;
         return true;
       }
       // Fixed-size elements: total length must be multiple of element size
@@ -181,7 +215,7 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
           (ob.def->type == SSZ_TYPE_LIST && ob.bytes.len > ob.def->def.vector.len * fixed_length)) THROW_INVALID("Invalid length for list");
       if (recursive && ob.def->type != SSZ_TYPE_UINT) {
         for (int i = 0; i < ob.bytes.len; i += fixed_length) {
-          if (!ssz_is_valid(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + i, fixed_length)), recursive, state)) return false;
+          if (!is_valid_at_depth(ssz_ob(*ob.def->def.vector.type, bytes(ob.bytes.data + i, fixed_length)), recursive, state, depth + 1)) return false;
         }
       }
       return true;
@@ -216,7 +250,11 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
       // resolve base container + active_fields for progressive containers)
     case SSZ_TYPE_CONTAINER: {
       // Container with mixed fixed/dynamic fields
-      if (ssz_is_dynamic(ob.def) ? (ob.bytes.len < ssz_fixed_length(ob.def)) : (ob.bytes.len != ssz_fixed_length(ob.def))) THROW_INVALID("Invalid length for container");
+      // The fixed part (inline fields + offsets) must be fully present before any field is
+      // read below. `ssz_fixed_length` cannot be used for the lower bound: it returns just
+      // SSZ_OFFSET_SIZE for a dynamic container, which let truncated input be read out of bounds.
+      size_t fixed_part = container_fixed_part(ob.def);
+      if (ssz_is_dynamic(ob.def) ? (ob.bytes.len < fixed_part) : (ob.bytes.len != fixed_part)) THROW_INVALID("Invalid length for container");
       if (recursive) {
         const ssz_def_t* elements    = ssz_container_elements(ob.def);
         uint32_t         count       = ssz_container_len(ob.def);
@@ -233,7 +271,7 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
               THROW_INVALID("Invalid offset for container");
             if (last_ob.def) {
               last_ob.bytes = bytes(ob.bytes.data + last_offset, offset - last_offset);
-              if (!ssz_is_valid(last_ob, recursive, state)) return add_error_prefix(state, def->name);
+              if (!is_valid_at_depth(last_ob, recursive, state, depth + 1)) return add_error_prefix(state, def->name);
             }
             last_ob.def = def;
             last_offset = offset;
@@ -241,13 +279,13 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
           }
           else {
             uint32_t len = ssz_fixed_length(def);
-            if (!ssz_is_valid(ssz_ob(*def, bytes(ob.bytes.data + pos, len)), recursive, state)) return add_error_prefix(state, def ? def->name : "unknown");
+            if (!is_valid_at_depth(ssz_ob(*def, bytes(ob.bytes.data + pos, len)), recursive, state, depth + 1)) return add_error_prefix(state, def ? def->name : "unknown");
             pos += len;
           }
         }
         if (last_ob.def) {
           last_ob.bytes = bytes(ob.bytes.data + last_offset, ob.bytes.len - last_offset);
-          if (!ssz_is_valid(last_ob, recursive, state)) return add_error_prefix(state, last_ob.def->name);
+          if (!is_valid_at_depth(last_ob, recursive, state, depth + 1)) return add_error_prefix(state, last_ob.def->name);
         }
       }
       return true;
@@ -255,11 +293,15 @@ bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
     case SSZ_TYPE_UNION:
       // Union: first byte is selector, remaining bytes are the selected variant
       if (ob.bytes.len == 0 || ob.bytes.data[0] >= ob.def->def.container.len) THROW_INVALID("Invalid selector for union");
-      if (recursive && ob.def->def.container.elements[ob.bytes.data[0]].type != SSZ_TYPE_NONE && !ssz_is_valid(ssz_ob(ob.def->def.container.elements[ob.bytes.data[0]], bytes(ob.bytes.data + 1, ob.bytes.len - 1)), recursive, state)) return false;
+      if (recursive && ob.def->def.container.elements[ob.bytes.data[0]].type != SSZ_TYPE_NONE && !is_valid_at_depth(ssz_ob(ob.def->def.container.elements[ob.bytes.data[0]], bytes(ob.bytes.data + 1, ob.bytes.len - 1)), recursive, state, depth + 1)) return false;
       return true;
     default:
       return true;
   }
+}
+
+bool ssz_is_valid(ssz_ob_t ob, bool recursive, c4_state_t* state) {
+  return is_valid_at_depth(ob, recursive, state, 0);
 }
 
 ssz_ob_t ssz_union(ssz_ob_t ob) {
