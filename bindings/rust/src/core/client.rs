@@ -499,10 +499,8 @@ impl Colibri {
 
         let servers = self.pick_servers(&req, use_prover_fallback);
         if servers.is_empty() {
-            req.set_error(
-                &format!("no servers configured for {:?}", req.request_type),
-                0,
-            );
+            let message = format!("no servers configured for {:?}", req.request_type);
+            req.set_error(&message, 0);
             return;
         }
 
