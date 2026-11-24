@@ -30,6 +30,7 @@
 #include "ssz.h"
 #include "unity.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void setUp(void) {
@@ -410,6 +411,32 @@ void test_dynamic_container_shorter_than_fixed_part_is_rejected(void) {
   TEST_ASSERT_TRUE(ssz_is_valid((ssz_ob_t) {.def = &TRUNCATED_CONTAINER, .bytes = bytes(only_offset, 36)}, true, NULL));
 }
 
+// A list whose elements are lists of its own type: each element is one level deeper.
+static const ssz_def_t NESTED_LIST = SSZ_LIST("nested", NESTED_LIST, 4);
+
+// `levels` lists, each holding the next as its one element (a 4-byte offset), the
+// innermost empty.
+static bool nested_is_valid(uint32_t levels, c4_state_t* state) {
+  uint8_t* data = calloc(levels ? levels : 1, 4);
+  for (uint32_t i = 0; i < levels; i++) data[i * 4] = 4;
+  bool valid = ssz_is_valid((ssz_ob_t) {.def = &NESTED_LIST, .bytes = bytes(data, levels * 4)}, true, state);
+  free(data);
+  return valid;
+}
+
+/**
+ * Regression test: ssz_is_valid follows at most SSZ_MAX_NESTING levels of a
+ * self-referential type, and rejects the next with its own error.
+ */
+void test_nesting_is_bounded(void) {
+  TEST_ASSERT_TRUE(nested_is_valid(0, NULL));
+  TEST_ASSERT_TRUE(nested_is_valid(SSZ_MAX_NESTING, NULL));
+  c4_state_t state = {0};
+  TEST_ASSERT_FALSE(nested_is_valid(SSZ_MAX_NESTING + 1, &state));
+  TEST_ASSERT_EQUAL_STRING("SSZ object is nested too deeply", state.error);
+  c4_state_free(&state);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_ssz);
@@ -424,5 +451,6 @@ int main(void) {
   RUN_TEST(test_witness_block_proof_rejects_after_hook);
   RUN_TEST(test_truncated_dynamic_container_is_rejected);
   RUN_TEST(test_dynamic_container_shorter_than_fixed_part_is_rejected);
+  RUN_TEST(test_nesting_is_bounded);
   return UNITY_END();
 }
