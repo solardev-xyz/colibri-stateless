@@ -285,6 +285,13 @@ fn build_with_cmake(repo_root: &Path, target: &str) -> LinkSetup {
         cfg.static_crt(true)
             .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreaded");
     }
+    // Flags for blst's own build script, which takes neither CFLAGS nor
+    // CMake's: a release's hardening (libs/blst/CMakeLists.txt records the
+    // flags blst is built with in blst-build-flags.txt).
+    println!("cargo:rerun-if-env-changed=COLIBRI_BLST_CFLAGS");
+    if let Some(flags) = env::var_os("COLIBRI_BLST_CFLAGS") {
+        cfg.define("BLST_EXTRA_CFLAGS", flags);
+    }
     forward_fetchcontent_settings(&mut cfg);
     let dst = cfg.build();
     let build_dir = dst.join("build");

@@ -50,6 +50,25 @@ if(NOT WIN32 AND NOT EMSCRIPTEN AND NOT EMBEDDED)
     set(EXTRA_C_FLAGS "-fPIC ")
 endif()
 
+# Flags blst's own build script adds to its compiles, beyond the ones set
+# here: a release's hardening, for example (-fstack-protector-strong, or
+# /guard:cf). Native builds only: build.sh takes them in CFLAGS, and
+# build.bat, which ignores CFLAGS, through cl's CL environment variable.
+# The flags blst is built with are recorded in blst-build-flags.txt in the
+# build directory, so a release can check them, and blst is rebuilt when
+# they change.
+set(BLST_EXTRA_CFLAGS "" CACHE STRING "Extra compiler flags for blst's own build script")
+set(BLST_BUILD_FLAGS_FILE "${CMAKE_BINARY_DIR}/blst-build-flags.txt")
+function(blst_record_flags flags)
+    set(old "")
+    if(EXISTS "${BLST_BUILD_FLAGS_FILE}")
+        file(READ "${BLST_BUILD_FLAGS_FILE}" old)
+    endif()
+    if(NOT old STREQUAL "${flags}\n")
+        file(WRITE "${BLST_BUILD_FLAGS_FILE}" "${flags}\n")
+    endif()
+endfunction()
+
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
 if(CMAKE_BUILD_TYPE_UPPER STREQUAL "MINSIZEREL")
     # Compiler-Flags für Größe-Optimierung
@@ -97,12 +116,15 @@ elseif(EMBEDDED)
         VERBATIM
     )
 elseif(WIN32)
+    # build.bat's own cl flags, then CL's.
+    blst_record_flags("cl /nologo /c /O2 /Zi /W4 /MT /Zl ${BLST_EXTRA_CFLAGS}")
     add_custom_command(
         OUTPUT ${BLST_LIB}
-        COMMAND ${CMAKE_COMMAND} -E env CFLAGS="${EXTRA_C_FLAGS}-ffunction-sections -fdata-sections /wd4210" ${blst_SOURCE_DIR}/build.bat -D__BLST_PORTABLE__
+        COMMAND ${CMAKE_COMMAND} -E env CFLAGS="${EXTRA_C_FLAGS}-ffunction-sections -fdata-sections /wd4210" "CL=${BLST_EXTRA_CFLAGS}" ${blst_SOURCE_DIR}/build.bat -D__BLST_PORTABLE__
         COMMAND ${CMAKE_COMMAND} -E echo "Checking if blst.lib exists"
         COMMAND ${CMAKE_COMMAND} -E copy ${blst_SOURCE_DIR}/blst.lib ${BLST_LIB}
         WORKING_DIRECTORY ${blst_SOURCE_DIR}
+        DEPENDS ${BLST_BUILD_FLAGS_FILE}
         COMMENT "Building and copying blst.lib with optimization flags on Windows"
         VERBATIM
     )
@@ -188,6 +210,10 @@ else()
         else()
             set(BLST_CFLAGS "${EXTRA_C_FLAGS}-ffunction-sections -fdata-sections")
         endif()
+        if(BLST_EXTRA_CFLAGS)
+            set(BLST_CFLAGS "${BLST_CFLAGS} ${BLST_EXTRA_CFLAGS}")
+        endif()
+        blst_record_flags("${BLST_CFLAGS}")
 
         add_custom_command(
             OUTPUT ${BLST_LIB}
@@ -197,6 +223,7 @@ else()
                 bash ${blst_SOURCE_DIR}/build.sh -D__BLST_PORTABLE__
             COMMAND ${CMAKE_COMMAND} -E rename ${blst_SOURCE_DIR}/libblst.a ${BLST_LIB}
             WORKING_DIRECTORY ${blst_SOURCE_DIR}
+            DEPENDS ${BLST_BUILD_FLAGS_FILE}
             COMMENT "Building blst for native architecture"
             VERBATIM
         )
